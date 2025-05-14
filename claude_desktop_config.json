@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "pr_analyzer": {
+            "command": "wsl",
+            "args": [
+                "bash",
+                "-c",
+                "source ~/projects/mcp-poc/venv/bin/activate && python3 ~/projects/mcp-poc/pr_analyzer.py"
+            ]
+        }
+    }
+}
