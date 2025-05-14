@@ -40,7 +40,7 @@ class PRAnalyzer:
             sys.exit(1)
 
     def _register_tools(self):
-        """Register MCP tools for PR analysis"""
+        """Register MCP tools for PR analysis with use of execution handler"""
         @self.mcp.tool()
         async def fetch_pr(repo_owner: str, repo_name: str, pr_number: int) -> Dict[str, Any]:
             """Fetch changes from a Github PR"""
