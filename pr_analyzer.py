@@ -84,6 +84,10 @@ class PRAnalyzer:
                 traceback.print_exc(file=sys.stderr)
                 return error_msg
             
+        @self.mcp.tool()
+        async def create_confluence_page():
+            pass
+            
     def run(self):
         """Start the MCP server"""
         try:
