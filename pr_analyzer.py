@@ -5,6 +5,7 @@ from typing import Any, List, Dict
 from mcp.server.fastmcp import FastMCP
 from ghub_integration import fetch_pr_changes
 from notion_client import Client
+from atlassian import Confluence
 from dotenv import load_dotenv
 
 class PRAnalyzer:
@@ -18,6 +19,9 @@ class PRAnalyzer:
 
         # Initialize Notion Client
         self._init_notion()
+        
+        # Initialize Confluence Client
+        self._init_confluence()
 
         # Register MCP tools
         self._register_tools()
@@ -36,6 +40,30 @@ class PRAnalyzer:
             print(f"Using Notion page ID: {self.notion_page_id}", file=sys.stderr)
         except Exception as e:
             print(f"Error initializing Notion client: {str(e)}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.exit(1)
+
+    def _init_confluence(self):
+        """Initialize the Confluence client with API credentials"""
+        try:
+            self.confluence_url = os.getenv("CONFLUENCE_URL")
+            self.confluence_username = os.getenv("CONFLUENCE_USERNAME")
+            self.confluence_api_token = os.getenv("CONFLUENCE_API_TOKEN")
+            self.confluence_space_key = os.getenv("CONFLUENCE_SPACE_KEY")
+
+            if not all([self.confluence_url, self.confluence_username, 
+                       self.confluence_api_token, self.confluence_space_key]):
+                raise ValueError("Missing Confluence credentials in environment variables")
+            
+            self.confluence = Confluence(
+                url=self.confluence_url,
+                username=self.confluence_username,
+                password=self.confluence_api_token
+            )
+            print(f"Confluence client initialized successfully", file=sys.stderr)
+            print(f"Using Confluence space key: {self.confluence_space_key}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error initializing Confluence client: {str(e)}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             sys.exit(1)
 
@@ -85,8 +113,30 @@ class PRAnalyzer:
                 return error_msg
             
         @self.mcp.tool()
-        async def create_confluence_page():
-            pass
+        async def create_confluence_page(title: str, content: str) -> str:
+            """Create a Confluence page with PR analysis"""
+            print(f"Creating Confluence page: {title}", file=sys.stderr)
+            try:
+                # Create the page in Confluence
+                page = self.confluence.create_page(
+                    space=self.confluence_space_key,
+                    title=title,
+                    body=content,
+                    representation='storage'
+                )
+                
+                if page and 'id' in page:
+                    page_url = f"{self.confluence_url}/pages/viewpage.action?pageId={page['id']}"
+                    print(f"Confluence page '{title}' created successfully!", file=sys.stderr)
+                    return f"Confluence page created successfully! View it at: {page_url}"
+                else:
+                    raise Exception("Failed to create page - no page ID returned")
+                    
+            except Exception as e:
+                error_msg = f"Error creating Confluence page: {str(e)}"
+                print(error_msg, file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                return error_msg
             
     def run(self):
         """Start the MCP server"""
