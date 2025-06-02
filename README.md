@@ -30,3 +30,9 @@ Install dependencies:
 Run script/mcp tools:
 
 `python pr_analyzer.py`
+
+Launch claude desktop and test with prompt below:
+
+`Analyze this github pull request: https://github.com/o-ouma/mcp-poc/pull/6`
+
+After analysis claude publishes the PR analysis summary to notion and confluence pages
