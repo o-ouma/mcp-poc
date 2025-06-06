@@ -7,6 +7,7 @@ from ghub_integration import fetch_pr_changes
 from notion_client import Client
 from atlassian import Confluence
 from dotenv import load_dotenv
+import requests
 
 class PRAnalyzer:
     def __init__(self) -> None:
@@ -14,7 +15,7 @@ class PRAnalyzer:
         load_dotenv()
 
         # Initialize MCP server
-        self.mcp = FastMCP("github_pr_analysis")
+        self.mcp = FastMCP("github_operations")
         print("MCP Server initialized", file=sys.stderr)
 
         # Initialize Notion Client
@@ -22,6 +23,9 @@ class PRAnalyzer:
         
         # Initialize Confluence Client
         self._init_confluence()
+
+        # Initialize GitHub token
+        self._init_github()
 
         # Register MCP tools
         self._register_tools()
@@ -67,8 +71,26 @@ class PRAnalyzer:
             traceback.print_exc(file=sys.stderr)
             sys.exit(1)
 
+    def _init_github(self):
+        """Initialize GitHub authentication"""
+        try:
+            self.github_token = os.getenv("GITHUB_TOKEN")
+            if not self.github_token:
+                raise ValueError("Missing GitHub token in environment variables")
+            self.github_headers = {
+                "Authorization": f"token {self.github_token}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            print("GitHub authentication initialized successfully", file=sys.stderr)
+        except Exception as e:
+            print(f"Error initializing GitHub authentication: {str(e)}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.exit(1)
+
     def _register_tools(self):
-        """Register MCP tools for PR analysis with use of execution handler"""
+        """Register MCP tools for various GitHub operations"""
+        
+        # PR Analysis Tools
         @self.mcp.tool()
         async def fetch_pr(repo_owner: str, repo_name: str, pr_number: int) -> Dict[str, Any]:
             """Fetch changes from a Github PR"""
@@ -84,7 +106,7 @@ class PRAnalyzer:
                 print(f"Error fetching PR: {str(e)}", file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
                 return {}
-            
+
         @self.mcp.tool()
         async def create_notion_page(title: str, content: str) -> str:
             """Create a Notion page with PR analysis"""
@@ -137,7 +159,79 @@ class PRAnalyzer:
                 print(error_msg, file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
                 return error_msg
-            
+
+        # Repository Management Tools
+        @self.mcp.tool()
+        async def create_repository(name: str, description: str, private: bool = True) -> Dict[str, Any]:
+            """Create a new GitHub repository"""
+            print(f"Creating repository: {name}", file=sys.stderr)
+            try:
+                response = requests.post(
+                    "https://api.github.com/user/repos",
+                    headers=self.github_headers,
+                    json={
+                        "name": name,
+                        "description": description,
+                        "private": private
+                    }
+                )
+                response.raise_for_status()
+                repo_data = response.json()
+                print(f"Repository '{name}' created successfully!", file=sys.stderr)
+                return {
+                    "name": repo_data["name"],
+                    "url": repo_data["html_url"],
+                    "clone_url": repo_data["clone_url"]
+                }
+            except Exception as e:
+                error_msg = f"Error creating repository: {str(e)}"
+                print(error_msg, file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                return {"error": error_msg}
+
+        @self.mcp.tool()
+        async def setup_repository_template(repo_owner: str, repo_name: str, template_name: str) -> str:
+            """Set up a repository with a predefined template"""
+            print(f"Setting up template '{template_name}' for {repo_owner}/{repo_name}", file=sys.stderr)
+            try:
+                # Example template setup logic
+                templates = {
+                    "python": {
+                        "files": [
+                            {"path": "requirements.txt", "content": ""},
+                            {"path": ".gitignore", "content": "*.pyc\n__pycache__/\n.env"}
+                        ]
+                    },
+                    "node": {
+                        "files": [
+                            {"path": "package.json", "content": "{}"},
+                            {"path": ".gitignore", "content": "node_modules/\n.env"}
+                        ]
+                    }
+                }
+                
+                if template_name not in templates:
+                    raise ValueError(f"Template '{template_name}' not found")
+                
+                template = templates[template_name]
+                for file in template["files"]:
+                    response = requests.put(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file['path']}",
+                        headers=self.github_headers,
+                        json={
+                            "message": f"Add {file['path']} from template",
+                            "content": file["content"]
+                        }
+                    )
+                    response.raise_for_status()
+                
+                return f"Successfully set up {template_name} template for {repo_name}"
+            except Exception as e:
+                error_msg = f"Error setting up template: {str(e)}"
+                print(error_msg, file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                return error_msg
+
     def run(self):
         """Start the MCP server"""
         try:

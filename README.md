@@ -15,6 +15,8 @@ Link to Notion page: https://www.notion.so/PR-Summaries-1f325dacde7e8015ba2dee4e
 
 ### Test Project
 
+Create and populate your .env file with variables defined in .env.copy
+
 Create virtual environment:
 
 `python3 -m venv venv`
@@ -30,6 +32,7 @@ Install dependencies:
 Run script/mcp tools:
 
 `python pr_analyzer.py`
+
 
 Launch claude desktop and test with prompt below:
 
