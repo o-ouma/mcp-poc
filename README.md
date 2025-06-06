@@ -15,6 +15,8 @@ Link to Notion page: https://www.notion.so/PR-Summaries-1f325dacde7e8015ba2dee4e
 
 ### Test Project
 
+Create and populate your .env file with variables defined in .env.copy
+
 Create virtual environment:
 
 `python3 -m venv venv`
@@ -31,8 +33,17 @@ Run script/mcp tools:
 
 `python pr_analyzer.py`
 
+
 Launch claude desktop and test with prompt below:
 
 `Analyze this github pull request: https://github.com/o-ouma/mcp-poc/pull/6`
 
 After analysis claude publishes the PR analysis summary to notion and confluence pages
+
+
+### To Do:
+
+1. Add create repo feature
+2. Add repo templates for python, node, angular, golang etc.
+3. Add delete repo feature
+4. 
