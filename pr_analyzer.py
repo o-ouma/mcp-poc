@@ -1,6 +1,7 @@
 import sys
 import os
 import traceback
+import base64
 from typing import Any, List, Dict
 from mcp.server.fastmcp import FastMCP
 from ghub_integration import fetch_pr_changes
@@ -99,16 +100,16 @@ class PRAnalyzer:
                 pr_info = fetch_pr_changes(repo_owner, repo_name, pr_number)
                 if pr_info is None:
                     print(f"No changes returned form fetch_pr_changes", file=sys.stderr)
-                    return {}
+                    return {"status": "error", "error": "No changes returned from fetch_pr_changes"}
                 print(f"Successfully fetched PR information", file=sys.stderr)
-                return pr_info
+                return {"status": "success", "data": pr_info}
             except Exception as e:
                 print(f"Error fetching PR: {str(e)}", file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
-                return {}
+                return {"status": "error", "error": str(e)}
 
         @self.mcp.tool()
-        async def create_notion_page(title: str, content: str) -> str:
+        async def create_notion_page(title: str, content: str) -> Dict[str, Any]:
             """Create a Notion page with PR analysis"""
             print(f"Creating Notion page: {title}", file=sys.stderr)
             try:
@@ -127,15 +128,15 @@ class PRAnalyzer:
                     }]
                 )
                 print(f"Notion page '{title}' created successfully!!", file=sys.stderr)
-                return f"Notion page '{title}' created successfully!!"
+                return {"status": "success", "message": f"Notion page '{title}' created successfully"}
             except Exception as e:
                 error_msg = f"Error creating Notion page: {str(e)}"
                 print(error_msg, file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
-                return error_msg
+                return {"status": "error", "error": error_msg}
             
         @self.mcp.tool()
-        async def create_confluence_page(title: str, content: str) -> str:
+        async def create_confluence_page(title: str, content: str) -> Dict[str, Any]:
             """Create a Confluence page with PR analysis"""
             print(f"Creating Confluence page: {title}", file=sys.stderr)
             try:
@@ -150,7 +151,11 @@ class PRAnalyzer:
                 if page and 'id' in page:
                     page_url = f"{self.confluence_url}/pages/viewpage.action?pageId={page['id']}"
                     print(f"Confluence page '{title}' created successfully!", file=sys.stderr)
-                    return f"Confluence page created successfully! View it at: {page_url}"
+                    return {
+                        "status": "success",
+                        "message": f"Confluence page created successfully",
+                        "url": page_url
+                    }
                 else:
                     raise Exception("Failed to create page - no page ID returned")
                     
@@ -158,7 +163,7 @@ class PRAnalyzer:
                 error_msg = f"Error creating Confluence page: {str(e)}"
                 print(error_msg, file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
-                return error_msg
+                return {"status": "error", "error": error_msg}
 
         # Repository Management Tools
         @self.mcp.tool()
@@ -179,22 +184,25 @@ class PRAnalyzer:
                 repo_data = response.json()
                 print(f"Repository '{name}' created successfully!", file=sys.stderr)
                 return {
-                    "name": repo_data["name"],
-                    "url": repo_data["html_url"],
-                    "clone_url": repo_data["clone_url"]
+                    "status": "success",
+                    "data": {
+                        "name": repo_data["name"],
+                        "url": repo_data["html_url"],
+                        "clone_url": repo_data["clone_url"]
+                    }
                 }
             except Exception as e:
                 error_msg = f"Error creating repository: {str(e)}"
                 print(error_msg, file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
-                return {"error": error_msg}
+                return {"status": "error", "error": error_msg}
 
         @self.mcp.tool()
-        async def setup_repository_template(repo_owner: str, repo_name: str, template_name: str) -> str:
+        async def setup_repository_template(repo_owner: str, repo_name: str, template_name: str) -> Dict[str, Any]:
             """Set up a repository with a predefined template"""
             print(f"Setting up template '{template_name}' for {repo_owner}/{repo_name}", file=sys.stderr)
             try:
-                # Example template setup logic
+                # Template setup logic (to include python, node, golang, angular etc)
                 templates = {
                     "python": {
                         "files": [
@@ -211,26 +219,36 @@ class PRAnalyzer:
                 }
                 
                 if template_name not in templates:
-                    raise ValueError(f"Template '{template_name}' not found")
+                    return {
+                        "status": "error",
+                        "error": f"Template '{template_name}' not found"
+                    }
                 
                 template = templates[template_name]
                 for file in template["files"]:
+                    # Encode content to base64
+                    content_bytes = file["content"].encode('utf-8')
+                    content_base64 = base64.b64encode(content_bytes).decode('utf-8')
+                    
                     response = requests.put(
                         f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file['path']}",
                         headers=self.github_headers,
                         json={
                             "message": f"Add {file['path']} from template",
-                            "content": file["content"]
+                            "content": content_base64
                         }
                     )
                     response.raise_for_status()
                 
-                return f"Successfully set up {template_name} template for {repo_name}"
+                return {
+                    "status": "success",
+                    "message": f"Successfully set up {template_name} template for {repo_name}"
+                }
             except Exception as e:
                 error_msg = f"Error setting up template: {str(e)}"
                 print(error_msg, file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
-                return error_msg
+                return {"status": "error", "error": error_msg}
 
     def run(self):
         """Start the MCP server"""
