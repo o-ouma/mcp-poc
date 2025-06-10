@@ -198,11 +198,90 @@ class PRAnalyzer:
                 return {"status": "error", "error": error_msg}
 
         @self.mcp.tool()
+        async def create_pull_request(
+            repo_owner: str,
+            repo_name: str,
+            title: str,
+            body: str,
+            head_branch: str,
+            base_branch: str = "main"
+        ) -> Dict[str, Any]:
+            """Create a GitHub Pull Request"""
+            try:
+                # Validate required parameters
+                if not all([repo_owner, repo_name, title, head_branch]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters: repo_owner, repo_name, title, and head_branch are required"
+                    }
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Create the pull request
+                try:
+                    response = requests.post(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls",
+                        headers=self.github_headers,
+                        json={
+                            "title": title,
+                            "body": body,
+                            "head": head_branch,
+                            "base": base_branch
+                        }
+                    )
+                    response.raise_for_status()
+                    pr_data = response.json()
+
+                    return {
+                        "status": "success",
+                        "data": {
+                            "number": pr_data["number"],
+                            "title": pr_data["title"],
+                            "url": pr_data["html_url"],
+                            "state": pr_data["state"],
+                            "created_at": pr_data["created_at"]
+                        }
+                    }
+                except requests.exceptions.RequestException as e:
+                    if response.status_code == 422:
+                        return {
+                            "status": "error",
+                            "error": "Pull request creation failed: Branch may not exist or PR already exists"
+                        }
+                    return {
+                        "status": "error",
+                        "error": f"Failed to create pull request: {str(e)}"
+                    }
+
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": "Pull request creation failed"
+                }
+
+        @self.mcp.tool()
         async def setup_repository_template(repo_owner: str, repo_name: str, template_name: str) -> Dict[str, Any]:
             """Set up a repository with a predefined template"""
-            print(f"Setting up template '{template_name}' for {repo_owner}/{repo_name}", file=sys.stderr)
             try:
-                # Template setup logic (to include python, node, golang, angular etc)
+                # Basic input validation
+                if not all([repo_owner, repo_name, template_name]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters"
+                    }
+
+                # Basic templates with minimal required files
                 templates = {
                     "python": {
                         "files": [
@@ -215,40 +294,90 @@ class PRAnalyzer:
                             {"path": "package.json", "content": "{}"},
                             {"path": ".gitignore", "content": "node_modules/\n.env"}
                         ]
+                    },
+                    "angular": {
+                        "files": [
+                            {"path": "package.json", "content": "{\n  \"name\": \"angular-project\",\n  \"version\": \"0.0.0\",\n  \"scripts\": {\n    \"ng\": \"ng\",\n    \"start\": \"ng serve\",\n    \"build\": \"ng build\",\n    \"watch\": \"ng build --watch --configuration development\",\n    \"test\": \"ng test\"\n  },\n  \"private\": true\n}"},
+                            {"path": ".gitignore", "content": "/dist\n/tmp\n/out-tsc\n/bazel-out\n\n# dependencies\n/node_modules\n\n# profiling files\nchrome-profiler-events*.json\nspeed-measure-plugin*.json\n\n# IDEs and editors\n.idea/\n.project\n.classpath\n.c9/\n*.launch\n.settings/\n*.sublime-workspace\n\n# Visual Studio Code\n.vscode/*\n!.vscode/settings.json\n!.vscode/tasks.json\n!.vscode/launch.json\n!.vscode/extensions.json\n.history/*\n\n# Miscellaneous\n/.angular/cache\n.sass-cache/\n/connect.lock\n/coverage\n/libpeerconnection.log\ntestem.log\n/typings\n\n# System files\n.DS_Store\nThumbs.db"}
+                        ]
+                    },
+                    "java": {
+                        "files": [
+                            {"path": "pom.xml", "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\"\n         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n         xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n    <modelVersion>4.0.0</modelVersion>\n\n    <groupId>com.example</groupId>\n    <artifactId>java-project</artifactId>\n    <version>1.0-SNAPSHOT</version>\n\n    <properties>\n        <maven.compiler.source>11</maven.compiler.source>\n        <maven.compiler.target>11</maven.compiler.target>\n    </properties>\n</project>"},
+                            {"path": ".gitignore", "content": "target/\n!.mvn/wrapper/maven-wrapper.jar\n!**/src/main/**/target/\n!**/src/test/**/target/\n\n### STS ###\n.apt_generated\n.classpath\n.factorypath\n.project\n.settings\n.springBeans\n.sts4-cache\n\n### IntelliJ IDEA ###\n.idea\n*.iws\n*.iml\n*.ipr\n\n### NetBeans ###\n/nbproject/private/\n/nbbuild/\n/dist/\n/nbdist/\n/.nb-gradle/\nbuild/\n!**/src/main/**/build/\n!**/src/test/**/build/\n\n### VS Code ###\n.vscode/\n\n### Mac OS ###\n.DS_Store"},
+                            {"path": "src/main/java/com/example/App.java", "content": "package com.example;\n\npublic class App {\n    public static void main(String[] args) {\n        System.out.println(\"Hello World!\");\n    }\n}"}
+                        ]
+                    },
+                    "golang": {
+                        "files": [
+                            {"path": "go.mod", "content": "module github.com/example/go-project\n\ngo 1.21"},
+                            {"path": ".gitignore", "content": "# Binaries for programs and plugins\n*.exe\n*.exe~\n*.dll\n*.so\n*.dylib\n\n# Test binary, built with `go test -c`\n*.test\n\n# Output of the go coverage tool, specifically when used with LiteIDE\n*.out\n\n# Dependency directories (remove the comment below to include it)\nvendor/\n\n# Go workspace file\ngo.work\n\n# IDE specific files\n.idea/\n.vscode/\n*.swp\n*.swo\n\n# OS specific files\n.DS_Store\nThumbs.db"},
+                            {"path": "main.go", "content": "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, Go!\")\n}"}
+                        ]
+                    },
+                    "php": {
+                        "files": [
+                            {"path": "composer.json", "content": "{\n    \"name\": \"example/php-project\",\n    \"description\": \"PHP Project\",\n    \"type\": \"project\",\n    \"require\": {\n        \"php\": \">=7.4\"\n    },\n    \"autoload\": {\n        \"psr-4\": {\n            \"App\\\\\": \"src/\"\n        }\n    }\n}"},
+                            {"path": ".gitignore", "content": "/vendor/\n/vendor\n.env\n.env.backup\n.phpunit.result.cache\ncomposer.lock\n\n# IDE specific files\n.idea/\n.vscode/\n*.sublime-project\n*.sublime-workspace\n\n# OS specific files\n.DS_Store\nThumbs.db\n\n# PHP specific\n*.log\n*.cache\n*.swp\n*.swo"},
+                            {"path": "index.php", "content": "<?php\n\necho \"Hello, PHP!\";\n"}
+                        ]
                     }
                 }
-                
+
+                # Validate template exists
                 if template_name not in templates:
                     return {
                         "status": "error",
                         "error": f"Template '{template_name}' not found"
                     }
-                
-                template = templates[template_name]
-                for file in template["files"]:
-                    # Encode content to base64
-                    content_bytes = file["content"].encode('utf-8')
-                    content_base64 = base64.b64encode(content_bytes).decode('utf-8')
-                    
-                    response = requests.put(
-                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file['path']}",
-                        headers=self.github_headers,
-                        json={
-                            "message": f"Add {file['path']} from template",
-                            "content": content_base64
-                        }
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
                     )
                     response.raise_for_status()
-                
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Process template files
+                template = templates[template_name]
+                for file in template["files"]:
+                    try:
+                        # Base64 encode content (required by GitHub API)
+                        content_bytes = file["content"].encode('utf-8')
+                        content_base64 = base64.b64encode(content_bytes).decode('utf-8')
+
+                        # Create file
+                        response = requests.put(
+                            f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file['path']}",
+                            headers=self.github_headers,
+                            json={
+                                "message": f"Add {file['path']} from template",
+                                "content": content_base64
+                            }
+                        )
+                        response.raise_for_status()
+                    except requests.exceptions.RequestException as e:
+                        return {
+                            "status": "error",
+                            "error": f"Failed to create file {file['path']}"
+                        }
+
                 return {
                     "status": "success",
-                    "message": f"Successfully set up {template_name} template for {repo_name}"
+                    "message": f"Template {template_name} setup completed"
                 }
+
             except Exception as e:
-                error_msg = f"Error setting up template: {str(e)}"
-                print(error_msg, file=sys.stderr)
-                traceback.print_exc(file=sys.stderr)
-                return {"status": "error", "error": error_msg}
+                return {
+                    "status": "error",
+                    "error": "Template setup failed"
+                }
 
     def run(self):
         """Start the MCP server"""

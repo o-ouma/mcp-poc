@@ -7,7 +7,11 @@
 3. Notion Account
 4. Python
 
-Project leverages MCP to analyze PRs prior to merges, making the code review process easier. The results of the analysis are published to Notion and Confluence Pages.
+Project leverages MCP to:
+
+ 1. Analyze PRs prior to merges, making the code review process easier. The results of the analysis are published to Notion and Confluence Pages.
+
+ 2. Create a github repo
 
 As part of the analysis, the model also recommends improvements to each PR, further improving code quality.
 
@@ -45,5 +49,6 @@ After analysis claude publishes the PR analysis summary to notion and confluence
 
 1. Add create repo feature
 2. Add repo templates for python, node, angular, golang etc.
-3. Add delete repo feature
-4. 
+3. Add feature to create PR
+4. Merge PR feature
+5. Analyze pipeline results
