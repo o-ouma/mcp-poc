@@ -379,6 +379,106 @@ class PRAnalyzer:
                     "error": "Template setup failed"
                 }
 
+        @self.mcp.tool()
+        async def merge_pull_request(
+            repo_owner: str,
+            repo_name: str,
+            pr_number: int,
+            merge_method: str = "merge",
+            commit_title: str = None,
+            commit_message: str = None
+        ) -> Dict[str, Any]:
+            """Merge a GitHub Pull Request
+            
+            Args:
+                repo_owner: Repository owner/organization
+                repo_name: Repository name
+                pr_number: Pull request number
+                merge_method: Merge strategy (merge, squash, or rebase)
+                commit_title: Custom merge commit title (optional)
+                commit_message: Custom merge commit message (optional)
+            """
+            try:
+                # Validate required parameters
+                if not all([repo_owner, repo_name, pr_number]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters: repo_owner, repo_name, and pr_number are required"
+                    }
+
+                # Validate merge method
+                valid_merge_methods = ["merge", "squash", "rebase"]
+                if merge_method not in valid_merge_methods:
+                    return {
+                        "status": "error",
+                        "error": f"Invalid merge method. Must be one of: {', '.join(valid_merge_methods)}"
+                    }
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Prepare merge payload
+                merge_payload = {
+                    "merge_method": merge_method
+                }
+                if commit_title:
+                    merge_payload["commit_title"] = commit_title
+                if commit_message:
+                    merge_payload["commit_message"] = commit_message
+
+                # Attempt to merge the PR
+                try:
+                    response = requests.put(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}/merge",
+                        headers=self.github_headers,
+                        json=merge_payload
+                    )
+                    
+                    if response.status_code == 200:
+                        merge_data = response.json()
+                        return {
+                            "status": "success",
+                            "data": {
+                                "sha": merge_data.get("sha"),
+                                "merged": merge_data.get("merged"),
+                                "message": merge_data.get("message")
+                            }
+                        }
+                    elif response.status_code == 405:
+                        return {
+                            "status": "error",
+                            "error": "Pull request is not mergeable"
+                        }
+                    elif response.status_code == 409:
+                        return {
+                            "status": "error",
+                            "error": "Pull request has conflicts that need to be resolved"
+                        }
+                    else:
+                        response.raise_for_status()
+
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to merge pull request: {str(e)}"
+                    }
+
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": "Pull request merge failed"
+                }
+
     def run(self):
         """Start the MCP server"""
         try:
