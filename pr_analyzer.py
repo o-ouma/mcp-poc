@@ -198,6 +198,79 @@ class PRAnalyzer:
                 return {"status": "error", "error": error_msg}
 
         @self.mcp.tool()
+        async def create_pull_request(
+            repo_owner: str,
+            repo_name: str,
+            title: str,
+            body: str,
+            head_branch: str,
+            base_branch: str = "main"
+        ) -> Dict[str, Any]:
+            """Create a GitHub Pull Request"""
+            try:
+                # Validate required parameters
+                if not all([repo_owner, repo_name, title, head_branch]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters: repo_owner, repo_name, title, and head_branch are required"
+                    }
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Create the pull request
+                try:
+                    response = requests.post(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls",
+                        headers=self.github_headers,
+                        json={
+                            "title": title,
+                            "body": body,
+                            "head": head_branch,
+                            "base": base_branch
+                        }
+                    )
+                    response.raise_for_status()
+                    pr_data = response.json()
+
+                    return {
+                        "status": "success",
+                        "data": {
+                            "number": pr_data["number"],
+                            "title": pr_data["title"],
+                            "url": pr_data["html_url"],
+                            "state": pr_data["state"],
+                            "created_at": pr_data["created_at"]
+                        }
+                    }
+                except requests.exceptions.RequestException as e:
+                    if response.status_code == 422:
+                        return {
+                            "status": "error",
+                            "error": "Pull request creation failed: Branch may not exist or PR already exists"
+                        }
+                    return {
+                        "status": "error",
+                        "error": f"Failed to create pull request: {str(e)}"
+                    }
+
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": "Pull request creation failed"
+                }
+
+        @self.mcp.tool()
         async def setup_repository_template(repo_owner: str, repo_name: str, template_name: str) -> Dict[str, Any]:
             """Set up a repository with a predefined template"""
             try:
