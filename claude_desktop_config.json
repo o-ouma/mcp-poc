@@ -1,6 +1,6 @@
 {
     "mcpServers": {
-        "pr_analyzer": {
+        "github_ops": {
             "command": "wsl",
             "args": [
                 "bash",

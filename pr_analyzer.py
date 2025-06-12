@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import requests
 from datetime import datetime, timedelta
 
-class PRAnalyzer:
+class GithubOps:
     def __init__(self) -> None:
         # Load env variables
         load_dotenv()
@@ -670,5 +670,5 @@ class PRAnalyzer:
             sys.exit(1)
 
 if __name__ == "__main__":
-    analyzer = PRAnalyzer()
+    analyzer = GithubOps()
     analyzer.run()
