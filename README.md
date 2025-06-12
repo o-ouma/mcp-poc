@@ -52,3 +52,14 @@ After analysis claude publishes the PR analysis summary to notion and confluence
 3. Add feature to create PR
 4. Merge PR feature
 5. Analyze pipeline results
+
+---
+SELECT * FROM (
+    SELECT * FROM ips_payment_in_process
+    ORDER BY reception_time DESC
+    LIMIT 10
+) AS sub
+ORDER BY id ASC;
+
+mysqldump -u tazamauser -p --no-data ipsl_stage_messaging > ips_staging_schema.sql
+
