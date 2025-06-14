@@ -9,8 +9,9 @@ from notion_client import Client
 from atlassian import Confluence
 from dotenv import load_dotenv
 import requests
+from datetime import datetime, timedelta
 
-class PRAnalyzer:
+class GithubOps:
     def __init__(self) -> None:
         # Load env variables
         load_dotenv()
@@ -379,6 +380,285 @@ class PRAnalyzer:
                     "error": "Template setup failed"
                 }
 
+        @self.mcp.tool()
+        async def analyze_pipeline_results(
+            repo_owner: str,
+            repo_name: str,
+            workflow_id: str = None,
+            run_id: str = None,
+            days: int = 7
+        ) -> Dict[str, Any]:
+            """Analyze GitHub Actions pipeline results and provide recommendations
+            
+            Args:
+                repo_owner: Repository owner/organization
+                repo_name: Repository name
+                workflow_id: Specific workflow ID to analyze (optional)
+                run_id: Specific run ID to analyze (optional)
+                days: Number of days to analyze (default: 7)
+            """
+            try:
+                # Validate required parameters
+                if not all([repo_owner, repo_name]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters: repo_owner and repo_name are required"
+                    }
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Get workflow runs
+                try:
+                    if run_id:
+                        # Get specific run
+                        response = requests.get(
+                            f"https://api.github.com/repos/{repo_owner}/{repo_name}/actions/runs/{run_id}",
+                            headers=self.github_headers
+                        )
+                        response.raise_for_status()
+                        runs = [response.json()]
+                    else:
+                        # Get workflow runs
+                        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/actions/runs"
+                        if workflow_id:
+                            url += f"/workflows/{workflow_id}"
+                        response = requests.get(
+                            url,
+                            headers=self.github_headers,
+                            params={"per_page": 100}
+                        )
+                        response.raise_for_status()
+                        runs = response.json()["workflow_runs"]
+
+                    # Filter runs by date if needed
+                    if days and not run_id:
+                        cutoff_date = datetime.now() - timedelta(days=days)
+                        runs = [run for run in runs if datetime.strptime(run["created_at"], "%Y-%m-%dT%H:%M:%SZ") > cutoff_date]
+
+                    # Analyze runs
+                    total_runs = len(runs)
+                    if total_runs == 0:
+                        return {
+                            "status": "error",
+                            "error": "No pipeline runs found for the specified criteria"
+                        }
+
+                    # Calculate statistics
+                    successful_runs = sum(1 for run in runs if run["conclusion"] == "success")
+                    failed_runs = sum(1 for run in runs if run["conclusion"] == "failure")
+                    cancelled_runs = sum(1 for run in runs if run["conclusion"] == "cancelled")
+                    
+                    # Calculate average duration
+                    durations = []
+                    for run in runs:
+                        if run["conclusion"] in ["success", "failure"]:
+                            start_time = datetime.strptime(run["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+                            end_time = datetime.strptime(run["updated_at"], "%Y-%m-%dT%H:%M:%SZ")
+                            duration = (end_time - start_time).total_seconds() / 60  # in minutes
+                            durations.append(duration)
+                    
+                    avg_duration = sum(durations) / len(durations) if durations else 0
+
+                    # Generate recommendations
+                    recommendations = []
+                    
+                    # Success rate recommendations
+                    success_rate = (successful_runs / total_runs) * 100
+                    if success_rate < 80:
+                        recommendations.append({
+                            "type": "success_rate",
+                            "priority": "high",
+                            "message": f"Low success rate ({success_rate:.1f}%). Review recent failures and consider improving test coverage."
+                        })
+                    
+                    # Duration recommendations
+                    if avg_duration > 30:  # More than 30 minutes
+                        recommendations.append({
+                            "type": "duration",
+                            "priority": "medium",
+                            "message": f"Long average pipeline duration ({avg_duration:.1f} minutes). Consider optimizing pipeline steps or using caching."
+                        })
+                    
+                    # Failure pattern analysis
+                    if failed_runs > 0:
+                        # Get detailed failure information for recent failed runs
+                        recent_failures = []
+                        for run in runs:
+                            if run["conclusion"] == "failure":
+                                try:
+                                    jobs_response = requests.get(
+                                        run["jobs_url"],
+                                        headers=self.github_headers
+                                    )
+                                    jobs_response.raise_for_status()
+                                    jobs = jobs_response.json()["jobs"]
+                                    
+                                    for job in jobs:
+                                        if job["conclusion"] == "failure":
+                                            recent_failures.append({
+                                                "job_name": job["name"],
+                                                "failed_at": job["completed_at"]
+                                            })
+                                except requests.exceptions.RequestException:
+                                    continue
+                        
+                        if recent_failures:
+                            # Group failures by job name
+                            failure_patterns = {}
+                            for failure in recent_failures:
+                                job_name = failure["job_name"]
+                                if job_name not in failure_patterns:
+                                    failure_patterns[job_name] = 0
+                                failure_patterns[job_name] += 1
+                            
+                            # Add recommendations for frequent failures
+                            for job_name, count in failure_patterns.items():
+                                if count >= 2:  # Job failed at least twice
+                                    recommendations.append({
+                                        "type": "failure_pattern",
+                                        "priority": "high",
+                                        "message": f"Job '{job_name}' failed {count} times. Review and fix recurring issues."
+                                    })
+
+                    return {
+                        "status": "success",
+                        "data": {
+                            "summary": {
+                                "total_runs": total_runs,
+                                "successful_runs": successful_runs,
+                                "failed_runs": failed_runs,
+                                "cancelled_runs": cancelled_runs,
+                                "success_rate": f"{success_rate:.1f}%",
+                                "average_duration": f"{avg_duration:.1f} minutes"
+                            },
+                            "recommendations": recommendations,
+                            "recent_failures": recent_failures if failed_runs > 0 else []
+                        }
+                    }
+
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to fetch pipeline data: {str(e)}"
+                    }
+
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": "Pipeline analysis failed"
+                }
+
+        @self.mcp.tool()
+        async def merge_pull_request(
+            repo_owner: str,
+            repo_name: str,
+            pr_number: int,
+            merge_method: str = "merge",
+            commit_title: str = None,
+            commit_message: str = None
+        ) -> Dict[str, Any]:
+            """Merge a GitHub Pull Request
+            
+            Args:
+                repo_owner: Repository owner/organization
+                repo_name: Repository name
+                pr_number: Pull request number
+                merge_method: Merge strategy (merge, squash, or rebase)
+                commit_title: Custom merge commit title (optional)
+                commit_message: Custom merge commit message (optional)
+            """
+            try:
+                # Validate required parameters
+                if not all([repo_owner, repo_name, pr_number]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters: repo_owner, repo_name, and pr_number are required"
+                    }
+
+                # Validate merge method
+                valid_merge_methods = ["merge", "squash", "rebase"]
+                if merge_method not in valid_merge_methods:
+                    return {
+                        "status": "error",
+                        "error": f"Invalid merge method. Must be one of: {', '.join(valid_merge_methods)}"
+                    }
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Prepare merge payload
+                merge_payload = {
+                    "merge_method": merge_method
+                }
+                if commit_title:
+                    merge_payload["commit_title"] = commit_title
+                if commit_message:
+                    merge_payload["commit_message"] = commit_message
+
+                # Attempt to merge the PR
+                try:
+                    response = requests.put(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}/merge",
+                        headers=self.github_headers,
+                        json=merge_payload
+                    )
+                    
+                    if response.status_code == 200:
+                        merge_data = response.json()
+                        return {
+                            "status": "success",
+                            "data": {
+                                "sha": merge_data.get("sha"),
+                                "merged": merge_data.get("merged"),
+                                "message": merge_data.get("message")
+                            }
+                        }
+                    elif response.status_code == 405:
+                        return {
+                            "status": "error",
+                            "error": "Pull request is not mergeable"
+                        }
+                    elif response.status_code == 409:
+                        return {
+                            "status": "error",
+                            "error": "Pull request has conflicts that need to be resolved"
+                        }
+                    else:
+                        response.raise_for_status()
+
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to merge pull request: {str(e)}"
+                    }
+
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": "Pull request merge failed"
+                }
+
     def run(self):
         """Start the MCP server"""
         try:
@@ -390,5 +670,5 @@ class PRAnalyzer:
             sys.exit(1)
 
 if __name__ == "__main__":
-    analyzer = PRAnalyzer()
+    analyzer = GithubOps()
     analyzer.run()
