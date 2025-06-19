@@ -381,6 +381,266 @@ class GithubOps:
                 }
 
         @self.mcp.tool()
+        async def create_dockerfile(
+            repo_owner: str,
+            repo_name: str,
+            language: str,
+            port: int = None
+        ) -> Dict[str, Any]:
+            """Create a Dockerfile for the project based on its language
+            
+            Args:
+                repo_owner: Repository owner/organization
+                repo_name: Repository name
+                language: Project language (python, node, java, golang, php, angular)
+                port: Optional port to expose (defaults to language-specific port)
+            """
+            try:
+                # Validate required parameters
+                if not all([repo_owner, repo_name, language]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters: repo_owner, repo_name, and language are required"
+                    }
+
+                # Set default ports if not specified
+                default_ports = {
+                    "python": 8000,
+                    "node": 3000,
+                    "java": 8080,
+                    "golang": 8080,
+                    "php": 80,
+                    "angular": 4200
+                }
+                
+                if port is None:
+                    port = default_ports.get(language, 8080)
+
+                # Define Dockerfile templates for each language
+                dockerfile_templates = {
+                    "python": f"""# Use Python 3.11 slim image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements file
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project files
+COPY . .
+
+# Expose port
+EXPOSE {port}
+
+# Run the application
+CMD ["python", "app.py"]""",
+
+                    "node": f"""# Use Node.js LTS slim image
+FROM node:20-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy project files
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Expose port
+EXPOSE {port}
+
+# Run the application
+CMD ["npm", "start"]""",
+
+                    "java": f"""# Use OpenJDK 17 slim image
+FROM eclipse-temurin:17-jre-jammy
+
+# Set working directory
+WORKDIR /app
+
+# Copy the JAR file
+COPY target/*.jar app.jar
+
+# Expose port
+EXPOSE {port}
+
+# Run the application
+CMD ["java", "-jar", "app.jar"]""",
+
+                    "golang": f"""# Build stage
+FROM golang:1.21-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+
+# Final stage
+FROM alpine:latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/main .
+
+# Expose port
+EXPOSE {port}
+
+# Run the application
+CMD ["./main"]""",
+
+                    "php": f"""# Use PHP 8.2 Apache image
+FROM php:8.2-apache
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Install PHP extensions and dependencies
+RUN apt-get update && apt-get install -y \\
+    libzip-dev \\
+    zip \\
+    && docker-php-ext-install zip pdo pdo_mysql
+
+# Copy project files
+COPY . .
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html
+
+# Expose port
+EXPOSE {port}
+
+# Apache configuration
+RUN a2enmod rewrite
+CMD ["apache2-foreground"]""",
+
+                    "angular": f"""# Build stage
+FROM node:20-slim AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy project files
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Production stage
+FROM nginx:alpine
+
+# Copy built assets from builder
+COPY --from=builder /app/dist/* /usr/share/nginx/html/
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port
+EXPOSE {port}
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]"""
+                }
+
+                if language not in dockerfile_templates:
+                    return {
+                        "status": "error",
+                        "error": f"Unsupported language: {language}. Supported languages: {', '.join(dockerfile_templates.keys())}"
+                    }
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Check if Dockerfile already exists
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/Dockerfile",
+                        headers=self.github_headers
+                    )
+                    if response.status_code == 200:
+                        return {
+                            "status": "error",
+                            "error": "Dockerfile already exists in the repository"
+                        }
+                except requests.exceptions.RequestException:
+                    pass  # File doesn't exist, proceed with creation
+
+                # Create Dockerfile
+                try:
+                    dockerfile_content = dockerfile_templates[language]
+                    content_bytes = dockerfile_content.encode('utf-8')
+                    content_base64 = base64.b64encode(content_bytes).decode('utf-8')
+
+                    response = requests.put(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/Dockerfile",
+                        headers=self.github_headers,
+                        json={
+                            "message": f"Add Dockerfile for {language} project",
+                            "content": content_base64
+                        }
+                    )
+                    response.raise_for_status()
+
+                    return {
+                        "status": "success",
+                        "data": {
+                            "message": f"Dockerfile created for {language} project",
+                            "port": port,
+                            "url": response.json()["content"]["html_url"]
+                        }
+                    }
+
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to create Dockerfile: {str(e)}"
+                    }
+
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": "Dockerfile creation failed"
+                }
+
+        @self.mcp.tool()
         async def analyze_pipeline_results(
             repo_owner: str,
             repo_name: str,
