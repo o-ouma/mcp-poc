@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose port
-EXPOSE 8000
+# EXPOSE 8000
 
 # Run the application
-CMD ["python", "app.py"]
+CMD ["python", "pr_analyzer.py"]
