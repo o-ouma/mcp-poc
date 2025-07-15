@@ -919,6 +919,303 @@ CMD ["nginx", "-g", "daemon off;"]"""
                     "error": "Pull request merge failed"
                 }
 
+        @self.mcp.tool()
+        async def generate_readme(
+            repo_owner: str,
+            repo_name: str,
+            language: str,
+            project_title: str = None,
+            project_description: str = None
+        ) -> Dict[str, Any]:
+            """Generate a README.md file for the project based on its language
+            
+            Args:
+                repo_owner: Repository owner/organization
+                repo_name: Repository name
+                language: Project language (python, node, java, golang, php, angular)
+                project_title: Optional project title (defaults to repo_name)
+                project_description: Optional project description
+            """
+            try:
+                # Validate required parameters
+                if not all([repo_owner, repo_name, language]):
+                    return {
+                        "status": "error",
+                        "error": "Missing required parameters: repo_owner, repo_name, and language are required"
+                    }
+
+                # Set defaults
+                if not project_title:
+                    project_title = repo_name
+                if not project_description:
+                    project_description = f"A {language} project."
+
+                # Define README templates for each language
+                readme_templates = {
+                    "python": f"""# {{project_title}}
+
+{{project_description}}
+
+### Prerequisites
+
+ - `Python`
+ - `Docker`
+
+## Project Setup
+
+```bash
+python3 -m venv venv
+```
+
+```bash
+source venv/bin/activate
+```
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+```
+
+## Usage
+
+```bash
+# Run script
+python app.py
+```
+
+### with Docker
+
+```bash
+# Build image
+docker build -t app-image:1.0.0 .
+```
+
+```bash
+# Run container
+docker run --rm -d app-image:1.0.0
+```
+
+## Project Structure
+
+- `app.py`: Main application file
+- `requirements.txt`: Python dependencies
+- `Dockerfile`
+- `.env.copy`: Copy of .env file; Create .env file and paste content from the .env.copy
+
+""",
+                    "node": f"""# {{project_title}}
+
+{{project_description}}
+
+## Setup
+
+```bash
+# Install dependencies
+npm install
+```
+
+## Usage
+
+```bash
+# Run server
+npm start
+```
+
+### with Docker
+
+```bash
+# Build docker image
+docker build -t app-image:1.0.0 .
+```
+
+```bash
+# Run container
+docker run --rm -d app-image:1.0.0
+```
+
+## Project Structure
+
+- `package.json`: Project metadata and dependencies
+- `index.js` or `app.js`: Main entry point
+- `Dockerfile`
+- `.env.copy`: Copy of .env file; Create .env file and paste content of .env.copy  
+
+""",
+                    "java": f"""# {{project_title}}
+
+{{project_description}}
+
+## Build
+
+```bash
+mvn package
+```
+
+## Run
+
+```bash
+java -jar target/app.jar
+```
+
+## Project Structure
+
+- `src/main/java/`: Java source files
+- `pom.xml`: Maven configuration
+
+""",
+                    "golang": f"""# {{project_title}}
+
+{{project_description}}
+
+## Build
+
+```bash
+go build -o main .
+```
+
+## Run
+
+```bash
+./main
+```
+
+## Project Structure
+
+- `main.go`: Main application file
+- `go.mod`: Go module definition
+- `Dockerfile`
+- `.env.copy`: Copy of .env file; Create .env file and paste content from .env.copy
+
+""",
+                    "php": f"""# {{project_title}}
+
+{{project_description}}
+
+## Setup
+
+Install dependencies (if using Composer):
+
+```bash
+composer install
+```
+
+## Usage
+
+Run with PHP built-in server:
+
+```bash
+php -S localhost:8000
+```
+
+## Project Structure
+
+- `index.php`: Main entry point
+- `composer.json`: PHP dependencies
+- `Dockerfile`
+- `.env.copy`: Copy of .env file; Create .env file and paste content from .env.copy
+
+""",
+                    "angular": f"""# {{project_title}}
+
+{{project_description}}
+
+## Setup
+
+```bash
+npm install
+```
+
+## Development Server
+
+```bash
+ng serve
+```
+
+## Build
+
+```bash
+ng build
+```
+
+## Project Structure
+
+- `src/`: Angular source files
+- `package.json`: Project metadata and dependencies
+- `Dockerfile`
+- `.env.copy`: Copy of .env file; Create .env file and paste content from .env.copy
+
+"""
+                }
+
+                if language not in readme_templates:
+                    return {
+                        "status": "error",
+                        "error": f"Unsupported language: {language}. Supported languages: {', '.join(readme_templates.keys())}"
+                    }
+
+                # Render the README content
+                readme_content = readme_templates[language].replace("{project_title}", project_title).replace("{project_description}", project_description)
+
+                # Verify repository access
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                        headers=self.github_headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": "Repository access verification failed"
+                    }
+
+                # Check if README.md already exists
+                sha = None
+                try:
+                    response = requests.get(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/README.md",
+                        headers=self.github_headers
+                    )
+                    if response.status_code == 200:
+                        sha = response.json().get("sha")
+                except requests.exceptions.RequestException:
+                    pass  # File doesn't exist, proceed with creation
+
+                # Create or update README.md
+                try:
+                    content_bytes = readme_content.encode('utf-8')
+                    content_base64 = base64.b64encode(content_bytes).decode('utf-8')
+                    payload = {
+                        "message": f"Generate README.md for {language} project",
+                        "content": content_base64
+                    }
+                    if sha:
+                        payload["sha"] = sha
+                    response = requests.put(
+                        f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/README.md",
+                        headers=self.github_headers,
+                        json=payload
+                    )
+                    response.raise_for_status()
+                    return {
+                        "status": "success",
+                        "data": {
+                            "message": "README.md generated successfully",
+                            "url": response.json()["content"]["html_url"]
+                        }
+                    }
+                except requests.exceptions.RequestException as e:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to create/update README.md: {str(e)}"
+                    }
+
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": "README.md generation failed"
+                }
+
     def run(self):
         """Start the MCP server"""
         try:

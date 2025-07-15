@@ -13,3 +13,10 @@ typing_extensions==4.13.2
 urllib3==2.4.0
 mcp[cli]>=1.4.0
 atlassian-python-api==3.1.0
+
+
+curl -u bouma@ipsl.co.ke:ATATT3xFfGF04ixtUwp9_g93BzZ1YmleWbIVS4BPmIDP8UK-QW44cumTE5mzOQk6sUqlIiwkcPhVlzN_l7zj_jHoJ9EKp4noyMhq1qzQn47hkl5H3cAllfcGx3F6ln06f1FeGQRxUAr5eqFLkqGxOlab-UlRLTBI2rlWc14Szlxlss4X5HUKx9Q=B8D39A43 \
+  -X GET \
+  -H "Accept: application/json" \
+  "https://pesalink.atlassian.net/rest/api/3/project/search"
+
