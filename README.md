@@ -3,8 +3,11 @@
 ## Prerequisites
 
 1. Claude Desktop
+
 2. Confluence Account
+
 3. Notion Account
+
 4. Python
 
 Project leverages MCP to:
@@ -52,10 +55,11 @@ After analysis claude publishes the PR analysis summary to notion and confluence
 ### To Do:
 
 1. Add create repo feature
+
 2. Add repo templates for python, node, angular, golang etc.
+
 3. Add feature to create PR
+
 4. Merge PR feature
+
 5. Analyze pipeline results
-
-
-
