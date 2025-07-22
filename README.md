@@ -63,6 +63,3 @@ After analysis claude publishes the PR analysis summary to notion and confluence
 4. Merge PR feature
 
 5. Analyze pipeline results
-
-
-
