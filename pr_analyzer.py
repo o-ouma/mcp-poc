@@ -10,84 +10,110 @@ from atlassian import Confluence
 from dotenv import load_dotenv
 import requests
 from datetime import datetime, timedelta
+from github_ops.auth import (
+    load_env,
+    get_notion_client,
+    get_confluence_client,
+    get_github_headers,
+    AuthError
+)
 
 class GithubOps:
     def __init__(self) -> None:
-        # Load env variables
-        load_dotenv()
+        # # Load env variables
+        # load_dotenv()
 
-        # Initialize MCP server
-        self.mcp = FastMCP("github_operations")
-        print("MCP Server initialized", file=sys.stderr)
+        # # Initialize MCP server
+        # self.mcp = FastMCP("github_operations")
+        # print("MCP Server initialized", file=sys.stderr)
 
-        # Initialize Notion Client
-        self._init_notion()
+        # # Initialize Notion Client
+        # self._init_notion()
         
-        # Initialize Confluence Client
-        self._init_confluence()
+        # # Initialize Confluence Client
+        # self._init_confluence()
 
-        # Initialize GitHub token
-        self._init_github()
+        # # Initialize GitHub token
+        # self._init_github()
 
-        # Register MCP tools
-        self._register_tools()
+        # # Register MCP tools
+        # self._register_tools()
 
-    def _init_notion(self):
-        """Initialize the Notion client with API key and page ID"""
         try:
-            self.notion_api_key = os.getenv("NOTION_API_KEY")
-            self.notion_page_id = os.getenv("NOTION_PAGE_ID")
+            load_env()
 
-            if not self.notion_api_key or not self.notion_page_id:
-                raise ValueError("Missing Notion API key or page ID in environment variables")
+            # Initialize MCP server
+            self.mcp = FastMCP("github_operations")
+            print("MCP Server Initialized", file=sys.stderr)
+
+            self.notion, self.notion_page_id = get_notion_client()
+            self.confluence, self.confluence_space_key = get_confluence_client()
+            self.github_headers = get_github_headers()
+            self._register_tools()
+        except AuthError as e:
+            print(f"Authentication error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Unexpected error: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.exit(1)
+
+    # def _init_notion(self):
+    #     """Initialize the Notion client with API key and page ID"""
+    #     try:
+    #         self.notion_api_key = os.getenv("NOTION_API_KEY")
+    #         self.notion_page_id = os.getenv("NOTION_PAGE_ID")
+
+    #         if not self.notion_api_key or not self.notion_page_id:
+    #             raise ValueError("Missing Notion API key or page ID in environment variables")
             
-            self.notion = Client(auth=self.notion_api_key)
-            print(f"Notion client intialized successfully", file=sys.stderr)
-            print(f"Using Notion page ID: {self.notion_page_id}", file=sys.stderr)
-        except Exception as e:
-            print(f"Error initializing Notion client: {str(e)}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            sys.exit(1)
+    #         self.notion = Client(auth=self.notion_api_key)
+    #         print(f"Notion client intialized successfully", file=sys.stderr)
+    #         print(f"Using Notion page ID: {self.notion_page_id}", file=sys.stderr)
+    #     except Exception as e:
+    #         print(f"Error initializing Notion client: {str(e)}", file=sys.stderr)
+    #         traceback.print_exc(file=sys.stderr)
+    #         sys.exit(1)
 
-    def _init_confluence(self):
-        """Initialize the Confluence client with API credentials"""
-        try:
-            self.confluence_url = os.getenv("CONFLUENCE_URL")
-            self.confluence_username = os.getenv("CONFLUENCE_USERNAME")
-            self.confluence_api_token = os.getenv("CONFLUENCE_API_TOKEN")
-            self.confluence_space_key = os.getenv("CONFLUENCE_SPACE_KEY")
+    # def _init_confluence(self):
+    #     """Initialize the Confluence client with API credentials"""
+    #     try:
+    #         self.confluence_url = os.getenv("CONFLUENCE_URL")
+    #         self.confluence_username = os.getenv("CONFLUENCE_USERNAME")
+    #         self.confluence_api_token = os.getenv("CONFLUENCE_API_TOKEN")
+    #         self.confluence_space_key = os.getenv("CONFLUENCE_SPACE_KEY")
 
-            if not all([self.confluence_url, self.confluence_username, 
-                       self.confluence_api_token, self.confluence_space_key]):
-                raise ValueError("Missing Confluence credentials in environment variables")
+    #         if not all([self.confluence_url, self.confluence_username, 
+    #                    self.confluence_api_token, self.confluence_space_key]):
+    #             raise ValueError("Missing Confluence credentials in environment variables")
             
-            self.confluence = Confluence(
-                url=self.confluence_url,
-                username=self.confluence_username,
-                password=self.confluence_api_token
-            )
-            print(f"Confluence client initialized successfully", file=sys.stderr)
-            print(f"Using Confluence space key: {self.confluence_space_key}", file=sys.stderr)
-        except Exception as e:
-            print(f"Error initializing Confluence client: {str(e)}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            sys.exit(1)
+    #         self.confluence = Confluence(
+    #             url=self.confluence_url,
+    #             username=self.confluence_username,
+    #             password=self.confluence_api_token
+    #         )
+    #         print(f"Confluence client initialized successfully", file=sys.stderr)
+    #         print(f"Using Confluence space key: {self.confluence_space_key}", file=sys.stderr)
+    #     except Exception as e:
+    #         print(f"Error initializing Confluence client: {str(e)}", file=sys.stderr)
+    #         traceback.print_exc(file=sys.stderr)
+    #         sys.exit(1)
 
-    def _init_github(self):
-        """Initialize GitHub authentication"""
-        try:
-            self.github_token = os.getenv("GITHUB_TOKEN")
-            if not self.github_token:
-                raise ValueError("Missing GitHub token in environment variables")
-            self.github_headers = {
-                "Authorization": f"token {self.github_token}",
-                "Accept": "application/vnd.github.v3+json"
-            }
-            print("GitHub authentication initialized successfully", file=sys.stderr)
-        except Exception as e:
-            print(f"Error initializing GitHub authentication: {str(e)}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            sys.exit(1)
+    # def _init_github(self):
+    #     """Initialize GitHub authentication"""
+    #     try:
+    #         self.github_token = os.getenv("GITHUB_TOKEN")
+    #         if not self.github_token:
+    #             raise ValueError("Missing GitHub token in environment variables")
+    #         self.github_headers = {
+    #             "Authorization": f"token {self.github_token}",
+    #             "Accept": "application/vnd.github.v3+json"
+    #         }
+    #         print("GitHub authentication initialized successfully", file=sys.stderr)
+    #     except Exception as e:
+    #         print(f"Error initializing GitHub authentication: {str(e)}", file=sys.stderr)
+    #         traceback.print_exc(file=sys.stderr)
+    #         sys.exit(1)
 
     def _register_tools(self):
         """Register MCP tools for various GitHub operations"""
