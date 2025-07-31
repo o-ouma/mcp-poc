@@ -49,6 +49,7 @@ class GithubOps:
             self.notion, self.notion_page_id = get_notion_client()
             self.confluence, self.confluence_space_key = get_confluence_client()
             self.github_headers = get_github_headers()
+            # add pr tools
             self._register_tools()
         except AuthError as e:
             print(f"Authentication error: {e}", file=sys.stderr)
