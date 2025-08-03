@@ -58,7 +58,7 @@ def register_pr_tools(mcp, github_headers, notion, notion_page_id, confluence, c
             # Create PR
             try:
                 response = requests.post(
-                    f"https://api.github.com/repos/{repo_owner}/{repo_name}",
+                    f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls",
                     headers=github_headers,
                     json={
                         "title": title,
